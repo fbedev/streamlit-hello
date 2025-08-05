@@ -62,13 +62,18 @@ def fetch_completed_videos(user_id):
         for item in data:
             task = item.get("task", {})
             unit = item.get("unit", {})
+
+            # ✅ Skip if there's no actual video field
+            if not unit.get("video"):
+                continue
+
             course_id = task.get("course", "UNKNOWN_COURSE")
             unit_id = unit.get("_id", "UNKNOWN_UNIT")
             task_id = task.get("_id", "UNKNOWN_TASK")
             if course_id and unit_id and task_id:
                 links.append(build_video_url(course_id, user_id, unit_id, task_id))
 
-        return links, f"✅ Found {len(links)} completed video(s)."
+        return links, f"✅ Found {len(links)} real video(s)."
     except Exception as e:
         return [], f"❌ Exception occurred: {e}"
 
