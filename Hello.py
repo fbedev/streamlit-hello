@@ -8,7 +8,7 @@ DASHBOARD_URL_TEMPLATE = f"{BASE_URL}/VideoProgress!dashboard?user={{user_id}}&s
 PROGRESS_URL = f"{BASE_URL}/VideoProgress!insertProgress"
 
 DEFAULT_SESSION = "AF1B47245D695296E9CF45A2B7A36162"
-DEFAULT_USER_ID = "D10028_STUDENT_003052"
+DEFAULT_USER_ID = "D10028_STUDENT_003071"
 
 # === State Initialization ===
 if "users_helped" not in st.session_state:
