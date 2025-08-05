@@ -1,6 +1,7 @@
 import requests
 from urllib.parse import urlparse, parse_qs
 import streamlit as st
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1402211944743567440/7jRAZdnPJq8MzmHsmIERrShv253fG4toTBskp9BafOv4k9EAu0BHsbNMlxI3kB6PrLpc"
 
 # === Constants ===
 BASE_URL = "https://dmhs.teams.com.tw"
@@ -8,9 +9,19 @@ DASHBOARD_URL_TEMPLATE = f"{BASE_URL}/VideoProgress!dashboard?user={{user_id}}&s
 PROGRESS_URL = f"{BASE_URL}/VideoProgress!insertProgress"
 
 DEFAULT_SESSION = "AF1B47245D695296E9CF45A2B7A36162"
-DEFAULT_USER_ID = "D10028_STUDENT_003071"
+DEFAULT_USER_ID = "D10028_STUDENT_003052"
+def send_discord_webhook(video_url, user_id):
+    content = f"🎬 **Video progress hacked**\n🔗 {video_url}\n👤 User: {user_id}"
+    data = {"content": content}
 
-# === State Initialization ===
+    try:
+        resp = requests.post(DISCORD_WEBHOOK_URL, json=data)
+        if resp.status_code != 204:
+            st.warning(f"⚠️ Discord webhook failed: {resp.status_code}")
+    except Exception as e:
+        st.warning(f"⚠️ Exception while sending webhook: {e}")
+
+
 if "users_helped" not in st.session_state:
     st.session_state.users_helped = 0
 if "videos_progressed" not in st.session_state:
@@ -87,10 +98,15 @@ def submit_video_progress(video_url, session_id, debug=False):
         resp = requests.post(PROGRESS_URL, headers=headers, data=data)
         if resp.status_code == 200:
             st.session_state.videos_progressed += 1
+            send_discord_webhook(video_url, user)  # ✅ Only here, if status is 200
             return f"✅ Submitted: {video_url}"
-        return f"❌ Failed ({resp.status_code}): {video_url}"
+        else:
+            return f"❌ Failed ({resp.status_code}): {video_url}"
     except Exception as e:
         return f"⚠️ Exception on {video_url}: {e}"
+
+
+
 
 # === Streamlit UI ===
 def main():
