@@ -250,8 +250,8 @@ def aggregate_top_videos_and_students(session_id):
     return [], top_students
 
 # === 使用者介面 ===
-st.set_page_config(page_title="影片提交專業版", layout="wide")
-st.title("🎞️ 影片進度提交專業版")
+st.set_page_config(page_title="sigma", layout="wide")
+st.title("🎞️ sigma")
 
 st.markdown("## 🔧 配置")
 col1, col2 = st.columns(2)
@@ -259,7 +259,7 @@ session_id = col1.text_input("JSESSIONID", value=DEFAULT_SESSION, key="session_i
 user_id = col2.text_input("使用者 ID", value=st.session_state.get("fetched_user_id", DEFAULT_USER_ID), key="user_id")
 
 st.markdown("## 🧩 模式選擇")
-tabs = st.tabs(["📥 手動輸入", "🔍 獲取影片", "🎓 學生搜尋", "📊 熱門學生", "☢️ 全面提交模式"])
+tabs = st.tabs(["📥 手動輸入", "🔍 自動獲取影片", "🎓 學生搜尋", "📊 超混學生", "☢️ 核彈"])
 
 with tabs[0]:
     st.session_state.manual_links = st.text_area("貼上影片連結（每行一個）", value="\n".join(st.session_state.manual_links), height=200)
@@ -288,7 +288,7 @@ with st.expander("🛡️ 高級隱形設定", expanded=True):
 
 # === 提交區域 ===
 if st.session_state.links:
-    st.markdown("## 🚀 影片提交面板")
+    st.markdown("## 🚀 影片面板")
     st.info(f"🎬 總共載入影片數: **{len(st.session_state.links)}**")
 
     # 初始化取消標誌
@@ -326,7 +326,7 @@ if st.session_state.links:
 
                 for i, link in enumerate(st.session_state.links[:total], 1):
                     if st.session_state.cancel_submit:
-                        st.warning("🚫 使用者取消提交。")
+                        st.warning("🚫 使用者取消。")
                         break
 
                     status_placeholder.markdown(f"📡 正在提交 **{i}/{total}**: `{link}`")
@@ -344,7 +344,7 @@ if st.session_state.links:
                 st.session_state.cancel_submit = False
                 progress_bar.empty()
                 status_placeholder.empty()
-                st.success("✅ 提交流程已完成！")
+                st.success("✅ 提交流程完成！")
 
                 st.markdown("### 📋 提交結果")
                 for r in results:
@@ -360,7 +360,7 @@ if st.session_state.links:
     )
 
 with tabs[2]:
-    st.subheader("🎓 學生資料多條件查詢")
+    st.subheader("🎓 學生資料條件查詢")
     column_mapping = {
         "學號 (UID)": "uid",
         "姓名 (Name)": "uname",
@@ -424,13 +424,13 @@ with tabs[2]:
         st.info("請輸入至少一個查詢條件以開始搜尋")
 
 with tabs[3]:
-    st.subheader("📊 按影片數量排序的熱門學生")
-    if st.button("🔎 分析熱門學生"):
+    st.subheader("📊 按影片數量排序的超混學生")
+    if st.button("🔎 分析超混學生"):
         with st.spinner("正在分析學生..."):
             _, st.session_state.top_students = aggregate_top_videos_and_students(session_id)
     
     if st.session_state.top_students:
-        st.markdown("### 📋 按影片數量排序的熱門學生")
+        st.markdown("### 📋 影片數量排序的超混學生")
         df_top_students = pd.DataFrame(st.session_state.top_students)
         df_top_students.insert(0, "排名", range(1, len(df_top_students) + 1))
         st.dataframe(
@@ -450,7 +450,7 @@ with tabs[3]:
         
         top_5_students = df_top_students.head(5)
         if not top_5_students.empty:
-            st.markdown("### 📊 前五名學生按影片數量排序")
+            st.markdown("### 📊 前五名超混學生影片數量排序")
             st.json({
                 "type": "bar",
                 "data": {
@@ -481,21 +481,21 @@ with tabs[3]:
             })
 
 with tabs[4]:
-    st.subheader("☢️ 全面提交模式：為每位學生提交進度")
+    st.subheader("☢️ 核彈模式：為每位學生看影片")
     st.markdown("---")
     st.markdown("### ⚠️ 警告")
-    st.error("此模式將**自動登入每位學生**，獲取其影片並提交所有進度。")
-    st.warning("如果未適當限制，可能會對伺服器造成負擔。請僅在完全了解後果的情況下繼續。")
+    st.error("此模式將**自動登入每位學生**，獲取影片並提交所有進度。")
+    st.warning("如果被抓到可能被幹死")
 
     col1, col2 = st.columns([2, 1])
     step1 = col1.checkbox("✅ 我了解風險")
     step2 = col2.button("🚨 啟動全面提交")
 
-    confirm_final = st.checkbox("🔓 我確認並希望開始全面提交")
+    confirm_final = st.checkbox("🔓 我確認並開始全面提交")
     nuke_ready = step1 and step2 and confirm_final
 
     if nuke_ready:
-        st.success("💣 全面提交已啟動。正在開始提交...")
+        st.success("💣 核彈已啟動。正在開始提交...")
 
         progress_bar = st.progress(0)
         status_placeholder = st.empty()
@@ -554,7 +554,7 @@ with tabs[4]:
         status_placeholder.empty()
         st.success("✅ 所有學生已完成。")
 
-        st.markdown("### 📋 全面提交結果")
+        st.markdown("### 📋 核彈結果")
         for student in results_per_student:
             with st.expander(f"{student['uid']} - {student['name']}: {student['status']}", expanded=False):
                 for line in student.get("details", []):
@@ -567,7 +567,7 @@ with tabs[4]:
         st.download_button("💾 下載全面提交日誌", "\n\n".join(download_lines), "nuke_log.txt")
 
     else:
-        st.info("🔒 等待完全確認以解鎖全面提交模式。")
+        st.info("🔒 等待完全確認以解鎖核彈模式。")
 
 st.markdown("---")
 st.metric("📈 已提交影片數", st.session_state.videos_progressed)
