@@ -200,24 +200,34 @@ with st.expander("🛡️ Advanced Stealth Settings", expanded=True):
     col3, col4 = st.columns(2)
     min_delay = col3.slider("⏳ Min Delay (sec)", 0.1, 5.0, 0.5, 0.1)
     max_delay = col4.slider("⏳ Max Delay (sec)", 0.5, 10.0, 1.4, 0.1)
-
 if st.session_state.links:
     if st.button("🚀 Submit All"):
         if not session_id or not user_id:
             st.error("❗ Session ID and User ID are required.")
         else:
-            with st.spinner("Submitting..."):
+            with st.spinner("🚀 Submitting videos..."):
                 results = []
+                progress_bar = st.progress(0)
+                status_placeholder = st.empty()
+                total = len(st.session_state.links)
+
                 for i, link in enumerate(st.session_state.links, 1):
+                    status_placeholder.markdown(f"🕐 Submitting **{i}/{total}**: `{link}`")
                     msg = submit_video_progress(link, session_id, debug, use_webhook, min_delay, max_delay)
                     results.append(f"{i}. {msg}")
+                    progress_bar.progress(i / total)
+
                 st.session_state.users_helped += 1
                 st.success("✅ Submission Complete")
+                progress_bar.empty()
+                status_placeholder.empty()
+
                 st.markdown("### 📋 Results")
                 for r in results:
                     st.write(r)
 
     st.download_button("💾 Download Links", data="\n".join(st.session_state.links), file_name="video_links.txt")
+
 with tab3:
     st.subheader("🎓 學生資料多條件查詢")
 
