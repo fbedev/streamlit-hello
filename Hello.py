@@ -104,8 +104,8 @@ def get_common_headers(video_url, session_id, user_id):
         'User-Agent': random.choice(USER_AGENTS),
         'Cookie': f"JSESSIONID={session_id}; userId={user_id};"
     }
-
-@st.cache_data
+# --- Changes in fetch_completed_videos ---
+# Remove @st.cache_data to ensure fresh fetch each time
 def fetch_completed_videos(user_id):
     url = DASHBOARD_URL_TEMPLATE.format(user_id=user_id)
     headers = {"X-Requested-With": "XMLHttpRequest"}
@@ -118,6 +118,7 @@ def fetch_completed_videos(user_id):
         data = r.json().get("result", [])
         if not data:
             return [], "🎉 無已完成影片"
+
         links = []
         for item in data:
             task = item.get("task", {})
@@ -159,7 +160,7 @@ def login_and_get_user_id(account, password, session_id):
         return None, f"❌ 登入失敗 ({resp.status_code}): {resp.text}"
     except Exception as e:
         return None, f"❌ 登入異常: {e}"
-
+# --- Changes in submit_video_progress ---
 def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, min_delay=0.5, max_delay=1.5):
     parsed = urlparse(video_url)
     qs = parse_qs(parsed.query)
@@ -167,7 +168,7 @@ def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, 
     user = qs.get('user', [None])[0]
     unit = qs.get('id', [None])[0]
     task = qs.get('task', [None])[0]
-    
+
     if not all([course, user, unit, task]):
         return f"[錯誤] URL 缺少參數: {video_url}"
 
@@ -183,10 +184,19 @@ def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, 
     }
 
     try:
+        # ✅ Cancel check before sending
+        if st.session_state.cancel_submit:
+            return "🚫 已取消"
+
         if video_url in st.session_state.submitted_links:
             return f"🔁 跳過重複: {video_url}"
 
         resp = requests.post(PROGRESS_URL, headers=headers, data=data)
+
+        # ✅ Cancel check again before sleep
+        if st.session_state.cancel_submit:
+            return "🚫 已取消"
+
         time.sleep(random.uniform(min_delay, max_delay))
 
         if resp.status_code == 200:
@@ -266,15 +276,17 @@ with tabs[0]:
     if st.session_state.manual_links.strip():
         st.session_state.links = [line.strip() for line in st.session_state.manual_links.strip().splitlines()]
         st.success(f"✅ 已載入 {len(st.session_state.links)} 個手動連結")
-
+# --- Changes in "獲取影片" button handler ---
 with tabs[1]:
     if st.button("🔍 獲取影片"):
+        st.session_state.links = []  # ✅ Clear old list first
         with st.spinner("正在獲取..."):
             links, msg = fetch_completed_videos(st.session_state.get("fetched_user_id", user_id))
             st.info(msg)
             if links:
                 st.session_state.links = [v["url"] for v in links]
                 st.session_state.active_tab = "fetch"
+                st.success(f"🎬 成功獲取 {len(st.session_state.links)} 部影片")
                 for i, video in enumerate(links, 1):
                     st.markdown(f"{i}. [`{video['video_name']} ({video['video_id']})`]({video['url']})")
 
