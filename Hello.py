@@ -6,10 +6,13 @@ from urllib.parse import urlparse, parse_qs
 import pandas as pd
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
+import redis
 if "cancel_submit" not in st.session_state:
     st.session_state.cancel_submit = False
-
+redis_client = redis.from_url(
+    "redis://default:PNumDUKhKdLTkgLDqaQvGIENbXZOTLJT@yamanote.proxy.rlwy.net:37944",
+    decode_responses=True
+)
 # === 配置 ===
 DISCORD_WEBHOOK_URL = st.text_input("Discord Webhook 網址", value="https://discord.com/api/webhooks/1402211944743567440/7jRAZdnPJq8MzmHsmIERrShv253fG4toTBskp9BafOv4k9EAu0BHsbNMlxI3kB6PrLpc", type="password")
 
@@ -110,38 +113,41 @@ def fetch_completed_videos(user_id):
     url = DASHBOARD_URL_TEMPLATE.format(user_id=user_id)
     headers = {"X-Requested-With": "XMLHttpRequest"}
     cookies = {"userId": user_id}
-    try:
-        session = create_session_with_retries()
-        r = session.get(url, headers=headers, cookies=cookies, timeout=10)
-        if r.status_code != 200:
-            return [], f"❌ 獲取錯誤: {r.status_code}"
-        data = r.json().get("result", [])
-        if not data:
-            return [], "🎉 無已完成影片"
+    session = create_session_with_retries()
 
-        links = []
-        for item in data:
-            task = item.get("task", {})
-            unit = item.get("unit", {})
-            if not unit.get("video"):
-                continue
-            course_id = task.get("course", "UNKNOWN_COURSE")
-            unit_id = unit.get("_id", "UNKNOWN_UNIT")
-            task_id = task.get("_id", "UNKNOWN_TASK")
-            video_name = unit.get("title", unit.get("name", f"影片-{unit_id}"))
-            video_id = f"{course_id}-{unit_id}-{task_id}"
-            links.append({
-                "url": build_video_url(course_id, user_id, unit_id, task_id),
-                "video_id": video_id,
-                "video_name": video_name,
-                "course": course_id,
-                "unit_id": unit_id,
-                "task_id": task_id
-            })
-        return links, f"✅ 找到 {len(links)} 個影片"
-    except Exception as e:
-        return [], f"❌ 獲取異常: {e}"
+    for attempt in range(3):
+        try:
+            r = session.get(url, headers=headers, cookies=cookies, timeout=10)
+            r.raise_for_status()
+            data = r.json().get("result", [])
+            if not data:
+                return [], "🎉 無已完成影片"
 
+            links = []
+            for item in data:
+                task = item.get("task", {})
+                unit = item.get("unit", {})
+                if not unit.get("video"):
+                    continue
+                course_id = task.get("course", "UNKNOWN_COURSE")
+                unit_id = unit.get("_id", "UNKNOWN_UNIT")
+                task_id = task.get("_id", "UNKNOWN_TASK")
+                video_name = unit.get("title", unit.get("name", f"影片-{unit_id}"))
+                video_id = f"{course_id}-{unit_id}-{task_id}"
+                links.append({
+                    "url": build_video_url(course_id, user_id, unit_id, task_id),
+                    "video_id": video_id,
+                    "video_name": video_name,
+                    "course": course_id,
+                    "unit_id": unit_id,
+                    "task_id": task_id
+                })
+            return links, f"✅ 找到 {len(links)} 個影片"
+        except requests.RequestException as e:
+            if attempt == 2:
+                return [], f"❌ 獲取異常: {e}"
+            time.sleep(1)
+    return [], "❌ 獲取失敗"
 def login_and_get_user_id(account, password, session_id):
     session = create_session_with_retries()
     session.cookies.set("JSESSIONID", session_id, domain="dmhs.teams.com.tw")
@@ -162,6 +168,9 @@ def login_and_get_user_id(account, password, session_id):
         return None, f"❌ 登入異常: {e}"
 # --- Changes in submit_video_progress ---
 def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, min_delay=0.5, max_delay=1.5):
+    if st.session_state.cancel_submit:
+        return "🚫 已取消"
+
     parsed = urlparse(video_url)
     qs = parse_qs(parsed.query)
     course = qs.get('course', [None])[0]
@@ -171,6 +180,9 @@ def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, 
 
     if not all([course, user, unit, task]):
         return f"[錯誤] URL 缺少參數: {video_url}"
+
+    if video_url in st.session_state.submitted_links:
+        return f"🔁 跳過重複: {video_url}"
 
     headers = get_common_headers(video_url, session_id, user)
     data = {
@@ -184,31 +196,20 @@ def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, 
     }
 
     try:
-        # ✅ Cancel check before sending
-        if st.session_state.cancel_submit:
-            return "🚫 已取消"
-
-        if video_url in st.session_state.submitted_links:
-            return f"🔁 跳過重複: {video_url}"
-
-        resp = requests.post(PROGRESS_URL, headers=headers, data=data)
-
-        # ✅ Cancel check again before sleep
-        if st.session_state.cancel_submit:
-            return "🚫 已取消"
-
+        resp = requests.post(PROGRESS_URL, headers=headers, data=data, timeout=10)
+        resp.raise_for_status()
         time.sleep(random.uniform(min_delay, max_delay))
-
-        if resp.status_code == 200:
-            st.session_state.videos_progressed += 1
-            st.session_state.submitted_links.append(video_url)
-            if use_webhook:
-                send_discord_webhook(video_url, user)
-            return f"✅ 已提交: {video_url}"
-        return f"❌ 提交失敗 ({resp.status_code}): {video_url}"
-    except Exception as e:
-        return f"⚠️ 異常: {e}"
-
+        st.session_state.videos_progressed += 1
+        st.session_state.submitted_links.append(video_url)
+        redis_client.incr("video_count")
+        if not redis_client.sismember("users_helped_set", user):
+            redis_client.sadd("users_helped_set", user)
+            redis_client.incr("user_helped")
+        if use_webhook:
+            send_discord_webhook(video_url, user)
+        return f"✅ 已提交: {video_url}"
+    except requests.RequestException as e:
+        return f"❌ 提交失敗: {e}"
 # === 統計熱門影片與學生 ===
 @st.cache_data
 def aggregate_top_videos_and_students(session_id):
@@ -292,8 +293,9 @@ with tabs[1]:
 
 st.markdown("---")
 with st.expander("🛡️ 高級隱形設定", expanded=True):
-    use_webhook = st.checkbox("📢 啟用 Discord Webhook", value=True)
-    debug = st.checkbox("🪛 啟用除錯日誌")
+    use_webhook = st.checkbox("📢 啟用 Discord Webhook", value=True, key="use_webhook")
+    debug = st.checkbox("🪛 啟用除錯日誌", key="debug")
+
     col3, col4 = st.columns(2)
     min_delay = col3.slider("⏳ 最小延遲 (秒)", 0.1, 5.0, 0.5, 0.1)
     max_delay = col4.slider("⏳ 最大延遲 (秒)", 0.5, 10.0, 1.4, 0.1)
@@ -491,7 +493,6 @@ with tabs[3]:
                     }
                 }
             })
-
 with tabs[4]:
     st.subheader("☢️ 核彈模式：為每位學生看影片")
     st.markdown("---")
@@ -548,10 +549,15 @@ with tabs[4]:
                 try:
                     result = submit_video_progress(link, session_id, debug, use_webhook, min_delay, max_delay)
                     student_result.append(result)
-                    st.session_state.videos_progressed += 1
                 except Exception as e:
                     student_result.append(f"⚠️ 錯誤: {e}")
                 time.sleep(random.uniform(0.3, 0.7))
+
+            # === Redis 更新 ===
+            r.incrby("video_count", len(videos))
+            if not r.sismember("users_helped_set", uid):
+                r.sadd("users_helped_set", uid)
+                r.incr("user_helped")
 
             results_per_student.append({
                 "uid": uid,
@@ -582,4 +588,6 @@ with tabs[4]:
         st.info("🔒 等待完全確認以解鎖核彈模式。")
 
 st.markdown("---")
-st.metric("📈 已提交影片數", st.session_state.videos_progressed)
+st.markdown("---")
+st.metric("🌍 影片數", redis_client.get("video_count") or 0)
+st.metric("🌍 幫助人數", redis_client.get("user_helped") or 0)
