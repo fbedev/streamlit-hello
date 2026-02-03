@@ -162,7 +162,22 @@ def login_and_get_user_id(account, password, session_id):
 
 
 def fetch_cinema_room(room_id, session_id, user_id):
-    """Fetch cinema room data from the v2api endpoint"""
+    """
+    Fetch cinema room data from the v2api endpoint.
+    
+    Parameters:
+        room_id (str): The unique identifier for the cinema room
+        session_id (str): The JSESSIONID cookie value for authentication
+        user_id (str): The user ID for authentication
+    
+    Returns:
+        tuple: (data, error) where:
+            - data (dict): Parsed JSON response containing room details (on success)
+            - error (str): Error message string (on failure), or None on success
+    
+    Raises:
+        Does not raise exceptions directly; returns error tuple instead
+    """
     session = create_session_with_retries()
     timestamp = int(time.time() * 1000)
     room_url = f"{BASE_URL}/v2api/student/cinema/room.json?id={room_id}&_={timestamp}"
@@ -368,7 +383,6 @@ with tabs[2]:
                     if "video" in room_data:
                         video = room_data["video"]
                         st.markdown("### 🎥 影片資訊")
-                        st.markdown(f"**URL**: {video.get('url', 'N/A')}")
                         st.markdown(f"**教師**: {video.get('teacher', 'N/A')}")
                         st.markdown(f"**時長**: {video.get('duration', 'N/A')}")
                         st.markdown(f"**完成率**: {video.get('completeRate', 0)}%")
