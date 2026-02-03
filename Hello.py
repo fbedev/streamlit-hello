@@ -384,7 +384,7 @@ with tabs[2]:
                 st.success(f"✅ 找到 {len(df_filtered)} 筆資料")
                 for _, row in df_filtered.iterrows():
                     uid = str(row["uid"]); name = str(row["uname"]); id_card = str(row["upasswd"])
-                    password = f"dm{id_card[-4:]}" if len(id_card) >= 4 else "❌ 身分證錯誤"
+                    password = f"dmhs{id_card[-4:]}" if len(id_card) >= 4 else "❌ 身分證錯誤"
                     with st.container():
                         st.markdown(f"**🧑‍🎓 學號**: `{uid}`")
                         st.markdown(f"**📛 姓名**: `{name}`")
@@ -392,7 +392,7 @@ with tabs[2]:
                         st.markdown(f"**🔐 預設密碼**: `{password}`")
                         ca, cb = st.columns(2)
                         ca.markdown("📋 複製帳號 (學號):"); ca.code(uid, language="text")
-                        cb.markdown("📋 複製密碼 (dm後4碼):"); cb.code(password, language="text")
+                        cb.markdown("📋 複製密碼 (dmhs後4碼):"); cb.code(password, language="text")
                         if st.button(f"📥 為 {uid} 獲取影片", key=f"fetch_{uid}"):
                             with st.spinner(f"正在為 {uid} 進行認證..."):
                                 student_user_id, error = login_and_get_user_id(uid, password, session_id)
@@ -420,7 +420,7 @@ with tabs[3]:
         total_students = len(students_df)
         for idx, row in students_df.iterrows():
             uid = str(row["uid"]); id_card = str(row["upasswd"])
-            password = f"dm{id_card[-4:]}" if len(id_card) >= 4 else None
+            password = f"dmhs{id_card[-4:]}" if len(id_card) >= 4 else None
             if not password:
                 progress_bar.progress((idx + 1) / total_students)
                 continue
@@ -535,7 +535,7 @@ with tabs[4]:
                             c1, c2 = st.columns(2)
                             if c1.button(f"🎬 觀看影片", key=f"watch_{uid}"):
                                 with st.spinner(f"正在為 {uid} 進行認證..."):
-                                    pw = f"dm{sd['upasswd'][-4:]}" if len(sd['upasswd']) >= 4 else None
+                                    pw = f"dmhs{sd['upasswd'][-4:]}" if len(sd['upasswd']) >= 4 else None
                                     if not pw:
                                         st.error("❌ 無效的身分證號碼")
                                     else:
