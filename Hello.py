@@ -162,7 +162,18 @@ def login_and_get_user_id(account, password, session_id):
 
 
 def auto_grab_cookie(account, password):
-    """Auto-grab a fresh JSESSIONID cookie by logging in"""
+    """Auto-grab a fresh JSESSIONID cookie by logging in.
+    
+    Args:
+        account (str): User's student ID or account number
+        password (str): User's password
+    
+    Returns:
+        tuple: A tuple containing (jsessionid, user_id, error)
+            - jsessionid (str|None): The JSESSIONID cookie value if successful, None otherwise
+            - user_id (str|None): The user ID from response cookies if available, None otherwise
+            - error (str|None): Error message if authentication failed, None on success
+    """
     session = create_session_with_retries()
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -180,7 +191,7 @@ def auto_grab_cookie(account, password):
             if jsessionid:
                 return jsessionid, user_id, None
             return None, None, "❌ 無法從回應中取得 JSESSIONID"
-        return None, None, f"❌ 登入失敗 ({resp.status_code}): {resp.text}"
+        return None, None, f"❌ 登入失敗 (HTTP {resp.status_code})"
     except Exception as e:
         return None, None, f"❌ 登入異常: {e}"
 
@@ -343,6 +354,7 @@ status_col3.metric("Dry Run", "✅ 開啟" if DRY_RUN else "❌ 關閉")
 # ==== Auto-grab Cookie Section ====
 with st.expander("🔐 自動取得 Cookie", expanded=False):
     st.markdown("輸入學號與密碼以自動取得新的 JSESSIONID cookie")
+    st.warning("⚠️ 請確保在安全的環境中使用此功能。建議僅在個人設備上使用。")
     grab_col1, grab_col2 = st.columns(2)
     grab_account = grab_col1.text_input("學號", key="grab_account", placeholder="例如: 1130273")
     grab_password = grab_col2.text_input("密碼", key="grab_password", type="password", placeholder="例如: dmhs1234")
