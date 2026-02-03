@@ -161,6 +161,57 @@ def login_and_get_user_id(account, password, session_id):
         return None, f"❌ 登入異常: {e}"
 
 
+def fetch_cinema_room(room_id, session_id, user_id):
+    """
+    Fetch cinema room data from the v2api endpoint.
+    
+    Parameters:
+        room_id (str): The unique identifier for the cinema room
+        session_id (str): The JSESSIONID cookie value for authentication
+        user_id (str): The user ID for authentication
+    
+    Returns:
+        tuple: (data, error) where:
+            - data (dict): Parsed JSON response containing room details (on success)
+            - error (str): Error message string (on failure), or None on success
+    
+    Raises:
+        Does not raise exceptions directly; returns error tuple instead
+    """
+    session = create_session_with_retries()
+    timestamp = int(time.time() * 1000)
+    room_url = f"{BASE_URL}/v2api/student/cinema/room.json?id={room_id}&_={timestamp}"
+    
+    # Set up cookies as shown in the curl command
+    cookies = {
+        "JSESSIONID": session_id,
+        "userId": user_id,
+        "userType": "student"
+    }
+    
+    # Set up headers matching the curl command
+    headers = {
+        "accept": "*/*",
+        "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "referer": f"{BASE_URL}/v2/student/cinema/room.html?id={room_id}",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent": random.choice(USER_AGENTS),
+        "x-requested-with": "XMLHttpRequest"
+    }
+    
+    try:
+        resp = session.get(room_url, headers=headers, cookies=cookies, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return data, None
+    except requests.RequestException as e:
+        return None, f"❌ 獲取房間資料失敗: {e}"
+    except ValueError as e:
+        return None, f"❌ 無效的 JSON 回應: {e}"
+
+
 def submit_video_progress(video_url, session_id, debug=False, use_webhook=True, min_delay=0.5, max_delay=1.5):
     if st.session_state.cancel_submit:
         return "🚫 已取消"
@@ -263,7 +314,7 @@ status_col3.metric("Dry Run", "✅ 開啟" if DRY_RUN else "❌ 關閉")
 
 # ---- Tabs (no AI) ----
 st.markdown("## 🧩 模式選擇")
-tabs = st.tabs(["📥 手動輸入", "🔍 自動獲取影片", "🎓 學生搜尋", "📊 超混學生", "🔎 快速學生查詢"])  # removed AI tabs
+tabs = st.tabs(["📥 手動輸入", "🔍 自動獲取影片", "🎬 影片房間", "🎓 學生搜尋", "📊 超混學生", "🔎 快速學生查詢"])  # removed AI tabs
 
 with tabs[0]:
     st.subheader("📥 手動輸入影片連結")
@@ -292,6 +343,77 @@ with tabs[1]:
                 st.success(f"🎬 成功獲取 {len(st.session_state.links)} 部影片")
                 for i, video in enumerate(links, 1):
                     st.markdown(f"{i}. [`{video['video_name']} ({video['video_id']})`]({video['url']})")
+
+
+with tabs[2]:
+    st.subheader("🎬 影片房間資料")
+    st.markdown("輸入影片房間 ID 以獲取詳細資料，包括團隊、使用者、課程和影片資訊。")
+    room_id = st.text_input("房間 ID", placeholder="例如: 69771025d1bd71000abf8ce6")
+    
+    if st.button("🔎 獲取房間資料"):
+        if not room_id.strip():
+            st.error("❌ 請輸入房間 ID")
+        elif not session_id or not user_id:
+            st.error("❌ 請先設定 JSESSIONID 和使用者 ID")
+        else:
+            with st.spinner("正在獲取房間資料..."):
+                room_data, error = fetch_cinema_room(room_id.strip(), session_id, user_id)
+                
+                if error:
+                    st.error(error)
+                else:
+                    st.success("✅ 成功獲取房間資料")
+                    
+                    # Display team information
+                    if "team" in room_data:
+                        team = room_data["team"]
+                        st.markdown("### 🏫 團隊資訊")
+                        st.markdown(f"**名稱**: {team.get('name', 'N/A')}")
+                        st.markdown(f"**顯示名稱**: {team.get('displayName', 'N/A')}")
+                        st.markdown(f"**描述**: {team.get('description', 'N/A')}")
+                    
+                    # Display user information
+                    if "user" in room_data:
+                        user_info = room_data["user"]
+                        st.markdown("### 👤 使用者資訊")
+                        st.markdown(f"**ID**: `{user_info.get('_id', 'N/A')}`")
+                        st.markdown(f"**姓名**: {user_info.get('name', 'N/A')}")
+                    
+                    # Display video information
+                    if "video" in room_data:
+                        video = room_data["video"]
+                        st.markdown("### 🎥 影片資訊")
+                        st.markdown(f"**教師**: {video.get('teacher', 'N/A')}")
+                        st.markdown(f"**時長**: {video.get('duration', 'N/A')}")
+                        st.markdown(f"**完成率**: {video.get('completeRate', 0)}%")
+                        
+                        # Display video URL as a clickable link
+                        if video.get('url'):
+                            st.markdown(f"[🎬 觀看影片]({video['url']})")
+                    
+                    # Display course information
+                    if "nav" in room_data and "courses" in room_data["nav"]:
+                        courses = room_data["nav"]["courses"]
+                        if courses:
+                            st.markdown("### 📚 課程列表")
+                            for course in courses:
+                                with st.expander(f"{course.get('name', 'Unknown')} ({course.get('subject', 'N/A')})"):
+                                    st.markdown(f"**課程 ID**: `{course.get('_id', 'N/A')}`")
+                                    st.markdown(f"**URL**: {course.get('url', 'N/A')}")
+                    
+                    # Display task information
+                    if "name" in room_data:
+                        st.markdown("### 📝 任務資訊")
+                        st.markdown(f"**名稱**: {room_data.get('name', 'N/A')}")
+                        st.markdown(f"**類型**: {room_data.get('type', 'N/A')}")
+                        st.markdown(f"**科目**: {room_data.get('subject', 'N/A')}")
+                        st.markdown(f"**是否為任務**: {'是' if room_data.get('isTask') else '否'}")
+                        if "end" in room_data:
+                            st.markdown(f"**結束時間**: {room_data['end']}")
+                    
+                    # Display raw JSON data in an expander
+                    with st.expander("🔍 查看完整 JSON 資料"):
+                        st.json(room_data)
 
 
 st.markdown("---")
@@ -346,7 +468,7 @@ if st.session_state.get("links"):
                 for r in results: st.write(r)
 
 
-with tabs[2]:
+with tabs[3]:
     st.subheader("🎓 學生資料條件查詢")
     if students_df.empty:
         st.error("❌ 學生資料檔案未載入或為空")
@@ -410,7 +532,7 @@ with tabs[2]:
             st.info("請輸入至少一個查詢條件以開始搜尋")
 
 
-with tabs[3]:
+with tabs[4]:
     st.subheader("📊 按影片數量排序的超混學生")
     @st.cache_data
     def aggregate_top_videos_and_students(session_id):
@@ -469,7 +591,7 @@ with tabs[3]:
             st.bar_chart(chart_data.set_index('學生'))
 
 
-with tabs[4]:
+with tabs[5]:
     st.subheader("🔎 快速學生查詢")
     st.markdown("輸入學號以查詢學生、儲存至資料庫或觀看影片。支援批量處理及跨平台通知。")
     st.markdown("### 📑 批量學號輸入")
