@@ -161,6 +161,41 @@ def login_and_get_user_id(account, password, session_id):
         return None, f"❌ 登入異常: {e}"
 
 
+def auto_grab_cookie(account, password):
+    """Auto-grab a fresh JSESSIONID cookie by logging in.
+    
+    Args:
+        account (str): User's student ID or account number
+        password (str): User's password
+    
+    Returns:
+        tuple: A tuple containing (jsessionid, user_id, error)
+            - jsessionid (str|None): The JSESSIONID cookie value if successful, None otherwise
+            - user_id (str|None): The user ID from response cookies if available, None otherwise
+            - error (str|None): Error message if authentication failed, None on success
+    """
+    session = create_session_with_retries()
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": random.choice(USER_AGENTS),
+        "X-Requested-With": "XMLHttpRequest"
+    }
+    data = {"account": account, "password": password}
+    login_url = f"{BASE_URL}/User/!login"
+    try:
+        resp = session.post(login_url, headers=headers, data=data, timeout=10)
+        if resp.status_code == 200 and '"success":true' in resp.text:
+            # Get the JSESSIONID from response cookies
+            jsessionid = session.cookies.get("JSESSIONID", None)
+            user_id = session.cookies.get("userId", None)
+            if jsessionid:
+                return jsessionid, user_id, None
+            return None, None, "❌ 無法從回應中取得 JSESSIONID"
+        return None, None, f"❌ 登入失敗 (HTTP {resp.status_code})"
+    except Exception as e:
+        return None, None, f"❌ 登入異常: {e}"
+
+
 def fetch_cinema_room(room_id, session_id, user_id):
     """
     Fetch cinema room data from the v2api endpoint.
@@ -301,7 +336,12 @@ st.title("🎞️ sigma")
 
 st.markdown("## 🔧 配置")
 col1, col2 = st.columns(2)
-session_id = col1.text_input("JSESSIONID", value=DEFAULT_SESSION, key="session_id", type="password")
+# Initialize session_id in session_state if not present
+if "session_id" not in st.session_state:
+    st.session_state.session_id = DEFAULT_SESSION
+session_id = col1.text_input("JSESSIONID", value=st.session_state.session_id, key="session_id_input", type="password")
+# Update session state when manually changed
+st.session_state.session_id = session_id
 user_id = col2.text_input("使用者 ID", value=st.session_state.get("fetched_user_id", DEFAULT_USER_ID), key="user_id")
 discord_webhook = col1.text_input("Discord Webhook 網址", value=st.session_state.discord_webhook, type="password")
 st.session_state.discord_webhook = discord_webhook
@@ -311,6 +351,32 @@ status_col1.metric("Redis 資料庫", "✅ 連線" if REDIS_AVAILABLE else "❌ 
 status_col2.metric("學生資料", f"{len(students_df)} 筆")
 status_col3.metric("Dry Run", "✅ 開啟" if DRY_RUN else "❌ 關閉")
 
+# ==== Auto-grab Cookie Section ====
+with st.expander("🔐 自動取得 Cookie", expanded=False):
+    st.markdown("輸入學號與密碼以自動取得新的 JSESSIONID cookie")
+    st.warning("⚠️ 請確保在安全的環境中使用此功能。建議僅在個人設備上使用。")
+    grab_col1, grab_col2 = st.columns(2)
+    grab_account = grab_col1.text_input("學號", key="grab_account", placeholder="例如: 1130273")
+    grab_password = grab_col2.text_input("密碼", key="grab_password", type="password", placeholder="例如: dmhs1234")
+    
+    if st.button("🚀 一鍵取得 Cookie"):
+        if not grab_account or not grab_password:
+            st.error("❌ 請輸入學號和密碼")
+        else:
+            with st.spinner("正在取得 Cookie..."):
+                jsessionid, grabbed_user_id, error = auto_grab_cookie(grab_account, grab_password)
+                if error:
+                    st.error(error)
+                else:
+                    st.success("✅ 成功取得 Cookie！")
+                    # Update session state with new cookie
+                    st.session_state.session_id = jsessionid
+                    if grabbed_user_id:
+                        st.session_state.fetched_user_id = grabbed_user_id
+                    st.info(f"🔑 JSESSIONID: `{jsessionid[:20]}...`")
+                    if grabbed_user_id:
+                        st.info(f"👤 使用者 ID: `{grabbed_user_id}`")
+                    st.rerun()
 
 # ---- Tabs (no AI) ----
 st.markdown("## 🧩 模式選擇")
